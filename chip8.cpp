@@ -72,27 +72,32 @@ void chip8::emulateCycle(){
             V[x] = V[x] ^ V[y];
             pc += 2;
             break;
-        case 0x0004: // 8XY4 set vx value to vy
-            V[x] = V[y];
+        case 0x0004: // 8XY4 adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not. 
+            V[15] = (((int) V[x] + (int)V[y])>255) ? 1: 0 ;
+            V[x] += V[y];
             pc += 2;
             break;
-        case 0x0005: // 8XY5 set vx value to vy
-            V[x] = V[y];
+        case 0x0005: // 8XY5 VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
+            V[15] = (((int) V[y] - (int)V[x])<0) ? 1: 0 ;
+            V[x] -= V[y];
             pc += 2;
             break;
-        case 0x0006: // 8XY6 set vx value to vy
-            V[x] = V[y];
+        case 0x0006: // 8XY6 Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+            uint8_t lsb = V[x] & 0x01;
+            V[15] = lsb;
+            V[x] = V[x]>>1;
             pc += 2;
             break;
-        case 0x0007: // 8XY7 set vx value to vy
-            V[x] = V[y];
+        case 0x0007: // 8XY7 Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
+           V[15] = (((int) V[x] - (int)V[y])<0) ? 1: 0 ;
+            V[x] = V[y] - V[x];
             pc += 2;
             break;
-        case 0x000E: // 8XYE set vx value to vy
-            V[x] = V[y];
+        case 0x000E: // 8XYE Stores the most significant bit of VX in VF and then shifts VX to the left by 1.
+            uint8_t msb = V[x]>>8;
+            V[x] = V[x] << 1;
             pc += 2;
             break;
-        
         
         default:
             break;
