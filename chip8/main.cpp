@@ -1,127 +1,113 @@
-#define _CRT_SECURE_NO_DEPRECATE
 #include "sdl.h"
 #include "stdio.h"
 #include "chip8.h"
+#include "stdint.h"
 
-void initG(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture * texture);
 void sKeys(chip8 &mychip);
-void Destroy();
-
-void SDL_UPDATE(SDL_Texture* texture, void* buffer, int pitch, SDL_Renderer* renderer);
-
 
 int main(int argc, char* args[]) {
-	chip8 mychip;
-	SDL_Window* window = NULL;
-	SDL_Renderer* renderer = NULL;
+	chip8 mychip = chip8();
+	
+	
 	SDL_Texture* texture = NULL;
-	int pitch = sizeof(mychip.gfx[0]) * 64;
+	int w = 640;
+	int h = 320;
+
 	//setup renderer
-	//initG(window,renderer,texture);
+	SDL_Window* window = NULL;
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
 		printf("SDL Failed to Init : %s", SDL_GetError());
 		exit(0);
 	}
-	if ((window = SDL_CreateWindow("Chip-8", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 320, SDL_WINDOW_SHOWN)) == NULL) {
+	if ((window = SDL_CreateWindow("Chip-8", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_SHOWN)) == NULL) {
 		printf("Failed to create window: %s", SDL_GetError());
 		exit(0);
 	}
-	if ((renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)) == NULL) {
+	SDL_Renderer* renderer = NULL;
+	if ((renderer = SDL_CreateRenderer(window, -1, 0)) == NULL) {
 		printf("Failed to create renderer: %s\n", SDL_GetError());
-		exit(0);
+		exit(0);	
 	}
-
-	if ((texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 64, 32)) == NULL) {
+	SDL_RenderSetLogicalSize(renderer, w, h);
+	if ((texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 64, 32)) == NULL) {
 		printf("Failed to create texture: %s\n", SDL_GetError());
 		exit(0);
 	}
-	 
+	uint32_t pixels[2048];
 	//intialize chip8
-	  mychip.initialize();
+	 mychip.initialize();
 	//load game
-	 mychip.loadGame("IBM Logo.ch8");
-	 
-	bool quit = false;
-	SDL_Event e;
-
-	while (!quit) {
-		//set inputs;
-		//sKeys(mychip);
-		while (SDL_PollEvent(&e) != 0)
-		{
-			//User requests quit
-			if (e.type == SDL_QUIT)
-			{
-				quit = true;
+	 mychip.loadGame("Airplane.ch8");
+	 while (true) {
+		 mychip.emulateCycle();
+		 SDL_Event ev;
+		 while (SDL_PollEvent(&ev)) {
+			 if (ev.type == SDL_QUIT) {
+				 exit(0);
+			 }
+		 }
+		 if (mychip.drawflag)
+		 {
+			 mychip.drawflag = 0;
+			 
+			 for (int i = 0; i < 2048; ++i)
+			 {
+				 uint8_t pixel = mychip.gfx[i];
+				 pixels[i] = (0x00FFFFFF * pixel) | 0xFF000000;
+				 
+			 }
+			 if (SDL_UpdateTexture(texture, NULL, pixels,   64 * sizeof(uint32_t)) != 0) {
+				printf("Failed to update texture: %s\n", SDL_GetError());
+			    exit(0);
+			 }
+			 if (SDL_RenderClear(renderer) != 0) {
+				 printf("Failed to render clear: %s\n", SDL_GetError());
+				 exit(0);
+			 }
+			 if (SDL_RenderCopy(renderer, texture, NULL, NULL) != 0) {
+				 printf("Failed to render copy: %s\n", SDL_GetError());
+				 exit(0);
+			 }
+			 SDL_RenderPresent(renderer);
+		 }
+		 SDL_Delay(2);
+	 }
+	
+	/*while (true) {
+		mychip.emulateCycle();
+		SDL_Event ev;
+		while (SDL_PollEvent(&ev)) {
+			if (ev.type == SDL_QUIT)
+				exit(0);
 			}
-			SDL_Delay(5);
-			mychip.emulateCycle();
-			if (mychip.drawflag)
+		if (mychip.drawflag) {
+			mychip.drawflag = false;
+			for (int i = 0; i < 2048; ++i)
 			{
-				pitch = sizeof(mychip.gfx[0]) * 64;
-				//SDL_UPDATE(texture, mychip.gfx, pitch, renderer);
-				if (SDL_UpdateTexture(texture, NULL, mychip.gfx, pitch) != 0) {
-					printf("Failed to update texture: %s\n", SDL_GetError());
-					exit(0);
-				}
-				if (SDL_RenderClear(renderer) != 0) {
-					printf("Failed to render clear: %s\n", SDL_GetError());
-					exit(0);
-				}
-				if (SDL_RenderCopy(renderer, texture, NULL, NULL) != 0) {
-					printf("Failed to render copy: %s\n", SDL_GetError());
-					exit(0);
-				}
-				SDL_RenderPresent(renderer);
-				mychip.drawflag = 0;
+				uint8_t pixel = mychip.gfx[i];
+				pixels[i] = (0x00FFFFFF * pixel) | 0xFF000000;
 			}
-			
-
+			if (SDL_UpdateTexture(texture, NULL, pixels, 64 * sizeof(Uint32)) != 0) {
+				printf("Failed to update texture: %s\n", SDL_GetError());
+				exit(0);
+			}
+			if (SDL_RenderClear(renderer) != 0) {
+				printf("Failed to render clear: %s\n", SDL_GetError());
+				exit(0);
+			}
+			if (SDL_RenderCopy(renderer, texture, NULL, NULL) != 0) {
+				printf("Failed to render copy: %s\n", SDL_GetError());
+				exit(0);
+			}
+			SDL_RenderPresent(renderer);
+			std::this_thread::sleep_for(std::chrono::microseconds(2000));
 		}
-	}
-
+	}*/
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_DestroyTexture(texture);
 	SDL_Quit();
 	return 0;
-}
-void SDL_UPDATE(SDL_Texture* texture, void* buffer, int pitch, SDL_Renderer* renderer) {
-
-	if (SDL_UpdateTexture(texture, NULL, buffer, pitch) != 0) {
-		printf("Failed to update texture: %s\n", SDL_GetError());
-		exit(0);
-	}
-	if (SDL_RenderClear(renderer) != 0) {
-		printf("Failed to render clear: %s\n", SDL_GetError());
-		exit(0);
-	}
-	if (SDL_RenderCopy(renderer, texture, NULL, NULL) != 0) {
-		printf("Failed to render copy: %s\n", SDL_GetError());
-		exit(0);
-	}
-	SDL_RenderPresent(renderer);
-
-}
-void initG(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture * texture) {
-	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-		printf("SDL Failed to Init : %s", SDL_GetError());
-		exit(0);
-	}
-	if ((window = SDL_CreateWindow("Chip-8", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 320, SDL_WINDOW_SHOWN)) == NULL) {
-		printf("Failed to create window: %s", SDL_GetError());
-		exit(0);
-	}
-	if ((renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED)) == NULL) {
-		printf("Failed to create renderer: %s\n", SDL_GetError());
-		exit(0);
-	 }
-	
-	if ((texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 64, 32)) == NULL) {
-		printf("Failed to create texture: %s\n", SDL_GetError());
-		exit(0);
-	}
-
 }
 
 void sKeys(chip8 &mychip) {

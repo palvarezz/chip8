@@ -1,8 +1,10 @@
-#define _CRT_SECURE_NO_DEPRECATE
+#define _CRT_SECURE_NO_WARNINGS
 #include "chip8.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <fstream>
+#include <random>
+#include <iostream>
 
 unsigned char chip8_fontset[80] =
 {
@@ -24,7 +26,7 @@ unsigned char chip8_fontset[80] =
   0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 
-    void chip8::initialize() {
+void chip8::initialize() {
         pc = 0x200; //program counter starts at x200
         opcode = 0;
         I = 0;
@@ -42,17 +44,22 @@ unsigned char chip8_fontset[80] =
         //clear memory
         for (int i = 0; i < 4096; i++)
             memory[i] = 0;
+        //clear keyboards
+        for (int i = 0; i < 16; i++)
+            key[i] = 0;
         //load fontset
         for (unsigned int i = 0; i < 80; i++) {
-            memory[0x50 + i] = chip8_fontset[i];
+            memory[i] = chip8_fontset[i];
         }
         //reset timers
         delay_timer = 0;
         sound_timer = 0;
 
-    }
+        srand(time(NULL));
 
-    void chip8::loadGame(const char *  filename) {
+    }
+    //load rom
+void chip8::loadGamec(const char* filename) {
         std::ifstream file(filename, std::ios::binary | std::ios::ate);
         const unsigned int start_address = 0x200;
         if (file.is_open())
@@ -81,8 +88,52 @@ unsigned char chip8_fontset[80] =
         }
 
     }
+    
+void chip8::loadGame(std::string path) {
+        std::ifstream file;
+        file.open(path, std::ios::binary);
 
-    void chip8::emulateCycle() {
+        if (!file.is_open())
+        {
+            std::cerr << "failed to open rom File ";
+        }
+        file.seekg(0, std::ios::end);
+        const int rom_size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        // if rom fits in memory
+        if ((4096 - 512) > rom_size)
+        {
+            //allocate buffer to store rom
+
+            char* buff = new char[rom_size];
+            // read to a buffer
+            file.read(buff, rom_size);
+
+            // copy buffer to memory
+
+            for (int i = 0; i < rom_size; ++i)
+            {
+                memory[i + 512] = buff[i];
+            }
+
+            delete []buff;
+        }
+        else
+        {
+            std::cerr << "rom is to big to read in memory " << std::endl;
+            exit(1);
+        }
+
+        file.close();
+        
+    }
+void chip8::loadRom(char const* filename) {
+   
+    }
+
+
+void chip8::emulateCycle() {
         //Fetch opcode
         opcode = memory[pc] << 8 | memory[pc + 1];
         uint8_t x = (opcode & 0x0F00) >> 8;
@@ -92,10 +143,9 @@ unsigned char chip8_fontset[80] =
         uint16_t address = opcode & 0x0FFF;
         uint8_t msb = V[x] >> 7;
         //Decode
-        //int a = 255;
-        //std::cout << std::hex << a;
-        std::cout << opcode << std::endl;
-        std::cout << std::hex << opcode<<std::endl;
+        std::cout <<"opcode is: "<< opcode << std::endl;
+        //std::cout <<std::hex << opcode << std::endl;
+
         switch (opcode & 0xF000)
         {
         case 0xA000: // ANNN sets  I to the address  NNN 
@@ -152,19 +202,19 @@ unsigned char chip8_fontset[80] =
                 pc += 2;
                 break;
             case 0x0004: //0x8XY4: Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't		 //check again
+                V[x] += V[y];
                 if(V[y] > (0xFF - V[x])) 
-						V[0xF] = 1; //carry
-					else 
-						V[0xF] = 0;					
-					V[x] += V[y];
-					pc += 2;	
+					V[0xF] = 1; //carry
+				else 
+					V[0xF] = 0;					
+				pc += 2;	
                 break;
             case 0x0005:  // 0x8XY5: VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't
+                V[x] -= V[y];
                 if (V[y] > V[x])
                     V[0xF] = 0; // there is a borrow
                 else
                     V[0xF] = 1;
-                V[x] -= V[y];
                 pc += 2;
                 break;
             case 0x0006: // 0x8XY6: Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift
@@ -173,7 +223,7 @@ unsigned char chip8_fontset[80] =
                 pc += 2;
                 break;
             case 0x0007:// 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't
-                if (V[x] > V[y])	// VY-VX
+                if (V[y] < V[x])	// VY-VX
                     V[0xF] = 0; // there is a borrow
                 else
                     V[0xF] = 1;
@@ -185,8 +235,6 @@ unsigned char chip8_fontset[80] =
                 V[x] <<= 1;
                 pc += 2;
                 break;
-
-
             default:
                 break;
             }
@@ -199,23 +247,28 @@ unsigned char chip8_fontset[80] =
             pc = V[0] + address;
         }   break;
         case 0xC000: //Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN. 
-        {   V[x] = rand() & (opcode & 0x00FF);
+        {   V[x] = (rand() % (0xFF + 1)) & (opcode & 0x00FF);
             pc += 2;
         }   break;
         case 0xD000: // draw sprites at coordinate
         {
             uint8_t height = opcode & 0x000F;
             uint8_t xcord = V[x] % 64; 
-            uint8_t ycord = V[y] % 32; 
+            uint8_t ycord = V[y] % 32;
+            uint8_t sprite_data;
+            unsigned short x = V[(opcode & 0x0F00) >> 8];
+            unsigned short y = V[(opcode & 0x00F0) >> 4];
+            unsigned short h = opcode & 0x000F;
+            unsigned short pixel;
             V[0xF] = 0;
-            for (uint8_t row = 0; row < height; row++) {
-                uint8_t sprite_data = memory[I + row];
-                for (unsigned int col = 0; col < 8; col++) {
-                    if ((sprite_data & (0x80 >> col)) != 0 ){
-                        if (gfx[(x + row + ((y + col) * 64))] == 1) {
+            for (int Yi = 0; Yi < h; Yi++) {
+                pixel = memory[I + Yi];
+                for (int Xi = 0; Xi < 8; Xi++) {
+                    if ((pixel & (0x80 >> Xi)) != 0 ){
+                        if (gfx[(x + Xi + ((y + Yi) * 64))] == 1) {
                             V[0xF] = 1;
                         }
-                        gfx[x + row + ((y + col) * 64)] ^= 1;
+                        gfx[x + Xi + ((y + Yi) * 64)] ^= 1;
                     }
                 }
             }
@@ -245,7 +298,8 @@ unsigned char chip8_fontset[80] =
                 V[x] = delay_timer;
                 pc += 2;
                 break;
-            case 0x000A: {
+             //keys
+            case 0x000A:{ 
                 if (key[0]) {
                     V[x] = 0;
                 }
@@ -299,14 +353,19 @@ unsigned char chip8_fontset[80] =
                 }}
                 break;
             case 0x0015:
-                delay_timer = V[x]; \
-                    pc += 2;
+                delay_timer = V[x]; 
+                pc += 2;
                 break;
             case 0x0018:
                 sound_timer = V[x];
                 pc += 2;
                 break;
             case 0x001E:
+                if (I + V[x] > 0xFFF)
+                    V[0xF] = 1;
+                else
+                    V[0xF] = 0;
+
                 I = I + V[x];
                 pc += 2;
                 break;
@@ -317,7 +376,7 @@ unsigned char chip8_fontset[80] =
             case 0x0033: // FX33: Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
                 memory[I] = V[x] / 100;
                 memory[I + 1] = (V[x] / 10) % 10;
-                memory[I + 2] = (V[x] % 100) % 10;
+                memory[I + 2] = (V[x]) % 10;
                 pc += 2;
                 break;
             case 0x0055:
@@ -347,15 +406,18 @@ unsigned char chip8_fontset[80] =
                 pc += 2;
                 break;
             case 0x00EE:
-                sp--;
+                --sp;
                 pc = stack[sp];
+                pc += 2;
                 break;
             }
             break;
+            //break 0 series
         default:
             std::cout << "Unknown opcode: " << opcode << "\n";
             break;
         }
+
         // Update timers
         if (delay_timer > 0)
             --delay_timer;
